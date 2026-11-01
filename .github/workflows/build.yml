@@ -1,0 +1,34 @@
+name: Build MCEF
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Check pinned hashes match the java-cef submodule
+        run: |
+          commit=$(git -C common/java-cef rev-parse HEAD)
+          grep -qx "java-cef-commit=$commit" common/src/main/resources/mcef-hashes.properties \
+            || { echo "mcef-hashes.properties is not for java-cef $commit"; exit 1; }
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew :neoforge:build --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcef-neoforge
+          path: neoforge/build/libs/*.jar
+          if-no-files-found: error
