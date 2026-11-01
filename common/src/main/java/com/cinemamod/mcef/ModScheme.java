@@ -34,7 +34,7 @@ import java.io.InputStream;
 import java.util.Locale;
 
 // https://github.com/CinemaMod/mcef/blob/master-1.19.2/src/main/java/net/montoyo/mcef/example/ModScheme.java
-public class ModScheme implements CefResourceHandler {
+public class ModScheme extends org.cef.handler.CefResourceHandlerAdapter { // adapter keeps the legacy processRequest/readResponse path
     private String contentType = null;
     private InputStream is = null;
 
