@@ -39,7 +39,7 @@ public class MCEFSettings {
     private static int deleteRetries = 0;
 
     /** GitHub Releases of our java-cef fork; builds are verified against hashes pinned in the jar. */
-    public static final String DEFAULT_MIRROR = "https://github.com/GITHUB_USER/java-cef/releases/download";
+    public static final String DEFAULT_MIRROR = "https://github.com/JURBUR606/java-cef/releases/download";
     private static final String OLD_CINEMAMOD_MIRROR = "https://mcef-download.cinemamod.com";
 
     private boolean skipDownload;
