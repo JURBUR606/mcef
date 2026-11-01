@@ -128,6 +128,18 @@ public class ModScheme implements CefResourceHandler {
     }
 
     @Override
+    public boolean skip(long bytesToSkip, org.cef.misc.LongRef bytesSkipped,
+            org.cef.callback.CefResourceSkipCallback callback) {
+        try {
+            bytesSkipped.set(is == null ? -2L : is.skip(bytesToSkip)); // -2 = net::ERR_FAILED
+            return is != null;
+        } catch (IOException e) {
+            bytesSkipped.set(-2L);
+            return false;
+        }
+    }
+
+    @Override
     public void cancel() {
         // attempt to free resources, just incase
         try {
