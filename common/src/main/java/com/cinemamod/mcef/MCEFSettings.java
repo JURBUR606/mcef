@@ -38,6 +38,10 @@ public class MCEFSettings {
             .resolve("mcef.properties");
     private static int deleteRetries = 0;
 
+    /** GitHub Releases of our java-cef fork; builds are verified against hashes pinned in the jar. */
+    public static final String DEFAULT_MIRROR = "https://github.com/GITHUB_USER/java-cef/releases/download";
+    private static final String OLD_CINEMAMOD_MIRROR = "https://mcef-download.cinemamod.com";
+
     private boolean skipDownload;
     private String downloadMirror;
     private String userAgent;
@@ -45,7 +49,7 @@ public class MCEFSettings {
 
     public MCEFSettings() {
         skipDownload = false;
-        downloadMirror = "https://mcef-download.cinemamod.com";
+        downloadMirror = DEFAULT_MIRROR;
         userAgent = null;
         useCache = true;
     }
@@ -132,6 +136,10 @@ public class MCEFSettings {
         try {
             skipDownload = Boolean.parseBoolean(properties.getProperty("skip-download"));
             downloadMirror = properties.getProperty("download-mirror");
+            // configs written by upstream MCEF point at CinemaMod's server, whose builds would fail verification
+            if (downloadMirror == null || downloadMirror.isBlank() || downloadMirror.equals("null")
+                    || downloadMirror.startsWith(OLD_CINEMAMOD_MIRROR))
+                downloadMirror = DEFAULT_MIRROR;
             userAgent = properties.getProperty("user-agent");
             useCache = Boolean.parseBoolean(properties.getProperty("use-cache"));
         } catch (Exception e) {

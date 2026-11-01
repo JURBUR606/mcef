@@ -24,22 +24,27 @@ import com.cinemamod.mcef.internal.MCEFDownloadListener;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import org.apache.commons.io.FileUtils;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Properties;
 
 /**
- * A downloader and extraction tool for java-cef builds.
+ * Downloads the java-cef build for the current platform and installs it into mcef-libraries.
  * <p>
- * Downloads for <a href="https://github.com/CinemaMod/java-cef">CinemaMod java-cef</a> are provided by the CinemaMod Group unless changed
- * in the MCEFSettings properties file; see {@link MCEFSettings}.
- * Email ds58@mailbox.org for any questions or concerns regarding the file hosting.
+ * The archive is only trusted if its SHA-256 equals the hash pinned in this jar
+ * ({@code mcef-hashes.properties}); a hash served next to the download is never used,
+ * so a compromised or spoofed mirror cannot get native code executed.
  */
 public class MCEFDownloader {
-    private static final String JAVA_CEF_DOWNLOAD_URL = "${host}/java-cef-builds/${java-cef-commit}/${platform}.tar.gz";
-    private static final String JAVA_CEF_CHECKSUM_DOWNLOAD_URL = "${host}/java-cef-builds/${java-cef-commit}/${platform}.tar.gz.sha256";
+    private static final String JAVA_CEF_DOWNLOAD_URL = "${host}/jcef-${java-cef-commit}/${platform}.tar.gz";
+    private static final String PINNED_HASHES = "/mcef-hashes.properties";
 
     private final String host;
     private final String javaCefCommitHash;
@@ -56,135 +61,147 @@ public class MCEFDownloader {
     }
 
     public String getJavaCefDownloadUrl() {
-        return formatURL(JAVA_CEF_DOWNLOAD_URL);
-    }
-
-    public String getJavaCefChecksumDownloadUrl() {
-        return formatURL(JAVA_CEF_CHECKSUM_DOWNLOAD_URL);
-    }
-
-    private String formatURL(String url) {
-        return url
+        return JAVA_CEF_DOWNLOAD_URL
                 .replace("${host}", host)
                 .replace("${java-cef-commit}", javaCefCommitHash)
                 .replace("${platform}", platform.getNormalizedName());
     }
 
-    public void downloadJavaCefBuild() throws IOException {
-        File mcefLibrariesPath = new File(System.getProperty("mcef.libraries.path"));
+    private static File librariesDir() {
+        return new File(System.getProperty("mcef.libraries.path"));
+    }
+
+    /** Marker written after a verified install; holds the pinned hash of the archive it came from. */
+    private File installedMarker() {
+        return new File(librariesDir(), platform.getNormalizedName() + ".installed");
+    }
+
+    /** @return the SHA-256 (lowercase hex) this jar expects for the current platform's archive */
+    public String getPinnedHash() throws IOException {
+        Properties p = new Properties();
+        try (InputStream in = MCEFDownloader.class.getResourceAsStream(PINNED_HASHES)) {
+            if (in == null) throw new IOException("Missing " + PINNED_HASHES + " in the MCEF jar");
+            p.load(in);
+        }
+        String commit = p.getProperty("java-cef-commit");
+        if (commit != null && !commit.equals(javaCefCommitHash))
+            throw new IOException("Pinned hashes are for java-cef " + commit + ", not " + javaCefCommitHash);
+        String hash = p.getProperty(platform.getNormalizedName());
+        if (hash == null || !hash.matches("[0-9a-fA-F]{64}"))
+            throw new IOException("No pinned hash for platform " + platform.getNormalizedName());
+        return hash.toLowerCase();
+    }
+
+    /** @return true if the build in mcef-libraries was installed from exactly the pinned archive */
+    public boolean isInstalled() {
+        try {
+            File marker = installedMarker();
+            File jcefDir = new File(librariesDir(), platform.getNormalizedName());
+            return marker.isFile() && jcefDir.isDirectory()
+                    && Files.readString(marker.toPath(), StandardCharsets.US_ASCII).trim().equals(getPinnedHash());
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Downloads, verifies and extracts the build. Nothing is extracted unless the hash matches. */
+    public void downloadAndInstall() throws IOException {
+        String expected = getPinnedHash();
+        File archive = new File(librariesDir(), platform.getNormalizedName() + ".tar.gz");
         MCEFDownloadListener.INSTANCE.setTask("Downloading Chromium Embedded Framework");
-        downloadFile(getJavaCefDownloadUrl(), new File(mcefLibrariesPath, platform.getNormalizedName() + ".tar.gz"));
-    }
+        downloadFile(getJavaCefDownloadUrl(), archive);
 
-    /**
-     * @return true if the jcef build checksum file matches the remote checksum file (for the {@link MCEFDownloader#javaCefCommitHash}),
-     * false if the jcef build checksum file did not exist or did not match; this means we should redownload JCEF
-     * @throws IOException
-     */
-    public boolean downloadJavaCefChecksum() throws IOException {
-        File mcefLibrariesPath = new File(System.getProperty("mcef.libraries.path"));
-        File jcefBuildHashFileTemp = new File(mcefLibrariesPath, platform.getNormalizedName() + ".tar.gz.sha256.temp");
-        File jcefBuildHashFile = new File(mcefLibrariesPath, platform.getNormalizedName() + ".tar.gz.sha256");
-
-        MCEFDownloadListener.INSTANCE.setTask("Downloading Checksum");
-        downloadFile(getJavaCefChecksumDownloadUrl(), jcefBuildHashFileTemp);
-
-        if (jcefBuildHashFile.exists()) {
-            boolean sameContent = FileUtils.contentEquals(jcefBuildHashFile, jcefBuildHashFileTemp);
-            if (sameContent) {
-                jcefBuildHashFileTemp.delete();
-                return true;
-            } else {
-                MCEF.getLogger().warn("JCEF Hash does not match.");
-            }
-        } else {
-            MCEF.getLogger().warn("Failed to download JCEF hash.");
+        MCEFDownloadListener.INSTANCE.setTask("Verifying");
+        String actual = sha256(archive);
+        if (!actual.equals(expected)) {
+            archive.delete();
+            throw new IOException("Checksum mismatch for " + archive.getName() + ": expected " + expected + ", got " + actual);
         }
 
-        jcefBuildHashFileTemp.renameTo(jcefBuildHashFile);
-
-        return false;
+        installedMarker().delete();
+        File jcefDir = new File(librariesDir(), platform.getNormalizedName());
+        deleteRecursively(jcefDir); // never mix files of an old build with the new one
+        extractTarGz(archive, librariesDir());
+        archive.delete();
+        Files.writeString(installedMarker().toPath(), expected, StandardCharsets.US_ASCII);
     }
 
-    public void extractJavaCefBuild(boolean delete) {
-        File mcefLibrariesPath = new File(System.getProperty("mcef.libraries.path"));
-        File tarGzArchive = new File(mcefLibrariesPath, platform.getNormalizedName() + ".tar.gz");
-        extractTarGz(tarGzArchive, mcefLibrariesPath);
-        if (delete) {
-            if (tarGzArchive.exists()) {
-                tarGzArchive.delete();
-            }
+    private static String sha256(File file) throws IOException {
+        try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) != -1) md.update(buf, 0, n);
+            return HexFormat.of().formatHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException(e);
         }
+    }
+
+    private static void deleteRecursively(File f) {
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) deleteRecursively(c);
+        f.delete();
     }
 
     private static void downloadFile(String urlString, File outputFile) throws IOException {
+        MCEF.getLogger().info(urlString + " -> " + outputFile.getCanonicalPath());
+        URL url = new URL(urlString);
+        if (!url.getProtocol().equals("https")) throw new IOException("Refusing non-HTTPS download: " + urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setInstanceFollowRedirects(true); // GitHub release assets redirect to their CDN (https only)
+        connection.setConnectTimeout(15_000);
+        connection.setReadTimeout(60_000);
         try {
-            MCEF.getLogger().info(urlString + " -> " + outputFile.getCanonicalPath());
-
-            URL url = new URL(urlString);
-            HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
-
-            if (urlConnection.getResponseCode() != 200) {
-                throw new IOException();
+            if (connection.getResponseCode() != 200)
+                throw new IOException("HTTP " + connection.getResponseCode() + " for " + urlString);
+            long fileSize = connection.getContentLengthLong();
+            try (InputStream in = new BufferedInputStream(connection.getInputStream());
+                 OutputStream out = new FileOutputStream(outputFile)) {
+                byte[] buffer = new byte[65536];
+                int count;
+                long readBytes = 0;
+                while ((count = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, count);
+                    readBytes += count;
+                    if (fileSize > 0) MCEFDownloadListener.INSTANCE.setProgress((float) readBytes / fileSize);
+                }
             }
-
-            int fileSize = urlConnection.getContentLength();
-
-            BufferedInputStream inputStream = new BufferedInputStream(url.openStream());
-            FileOutputStream outputStream = new FileOutputStream(outputFile);
-
-            byte[] buffer = new byte[2048];
-            int count;
-            int readBytes = 0;
-            while ((count = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, count);
-                readBytes += count;
-                float percentComplete = (float) readBytes / fileSize;
-                MCEFDownloadListener.INSTANCE.setProgress(percentComplete);
-                buffer = new byte[Math.max(2048, inputStream.available())];
-            }
-
-            inputStream.close();
-            outputStream.close();
-        } catch (IOException e) {
-            throw new IOException("Failed to download " + urlString);
+        } finally {
+            connection.disconnect();
         }
     }
 
-    private static void extractTarGz(File tarGzFile, File outputDirectory) {
+    private static void extractTarGz(File tarGzFile, File outputDirectory) throws IOException {
         MCEFDownloadListener.INSTANCE.setTask("Extracting");
-
         outputDirectory.mkdirs();
-
+        String root = outputDirectory.getCanonicalPath() + File.separator;
         long fileSize = tarGzFile.length();
         long totalBytesRead = 0;
-
         try (TarArchiveInputStream tarInput = new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(tarGzFile)))) {
             TarArchiveEntry entry;
             while ((entry = tarInput.getNextTarEntry()) != null) {
-                if (entry.isDirectory()) {
+                if (!entry.isFile() || entry.isSymbolicLink() || entry.isLink()) {
                     continue;
                 }
-
                 File outputFile = new File(outputDirectory, entry.getName());
+                // reject entries like "../../x" that would escape mcef-libraries
+                if (!outputFile.getCanonicalPath().startsWith(root))
+                    throw new IOException("Archive entry outside the target directory: " + entry.getName());
                 outputFile.getParentFile().mkdirs();
-
                 try (OutputStream outputStream = new FileOutputStream(outputFile)) {
-                    byte[] buffer = new byte[4096];
+                    byte[] buffer = new byte[65536];
                     int bytesRead;
                     while ((bytesRead = tarInput.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
                         totalBytesRead += bytesRead;
                         float percentComplete = (((float) totalBytesRead / fileSize) / 2.6158204f); // Roughly the compression ratio
                         MCEFDownloadListener.INSTANCE.setProgress(percentComplete);
-                        buffer = new byte[Math.max(4096, tarInput.available())];
                     }
                 }
+                if ((entry.getMode() & 0100) != 0) outputFile.setExecutable(true, false);
             }
-        } catch (IOException e) {
-            MCEF.getLogger().error("Failed to extract gzip file to " + outputDirectory, e);
         }
-
         MCEFDownloadListener.INSTANCE.setProgress(1.0f);
     }
 }

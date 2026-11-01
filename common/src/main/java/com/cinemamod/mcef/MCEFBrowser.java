@@ -85,11 +85,17 @@ public class MCEFBrowser extends CefBrowserOsr {
     protected boolean popupDrawn = false;
 
     public MCEFBrowser(MCEFClient client, String url, boolean transparent) {
-        super(client.getHandle(), url, transparent, null);
+        super(client.getHandle(), url, transparent, null, frameSettings());
         renderer = new MCEFRenderer(transparent);
         cursorChangeListener = (cefCursorID) -> setCursor(CefCursorType.fromId(cefCursorID));
 
         Minecraft.getInstance().submit(renderer::initialize);
+    }
+
+    private static org.cef.CefBrowserSettings frameSettings() {
+        org.cef.CefBrowserSettings s = new org.cef.CefBrowserSettings();
+        s.windowless_frame_rate = 60; // CEF maximum; the default 30 makes video look choppy
+        return s;
     }
 
     public MCEFRenderer getRenderer() {

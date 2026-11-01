@@ -90,34 +90,19 @@ public class CefDownloadMixin {
             MCEFSettings settings = MCEF.getSettings();
             MCEFDownloader downloader = new MCEFDownloader(settings.getDownloadMirror(), javaCefCommit, MCEFPlatform.getPlatform());
 
-            boolean downloadJcefBuild;
-
-            // We always download the checksum for the java-cef build
-            // We will compare this with mcef-libraries/<platform>.tar.gz.sha256
-            // If the contents of the files differ (or it doesn't exist locally), we know we need to redownload JCEF
-            try {
-                downloadJcefBuild = !downloader.downloadJavaCefChecksum();
-            } catch (IOException e) {
-                MCEF.getLogger().error("Failed to download JCEF checksum.", e);
-                MCEFDownloadListener.INSTANCE.setFailed(true);
-                return;
-            }
-
-            // Ensure the mcef-libraries directory exists
-            // If not, we want to try redownloading
-            File mcefLibrariesDir = new File(System.getProperty("mcef.libraries.path"));
-            downloadJcefBuild |= !mcefLibrariesDir.exists();
-
-            if (downloadJcefBuild && !settings.isSkipDownload()) {
-                try {
-                    downloader.downloadJavaCefBuild();
-                } catch (IOException e) {
-                    MCEF.getLogger().error("Failed to download JCEF.", e);
-                    MCEFDownloadListener.INSTANCE.setFailed(true);
-                    return;
+            // A verified install needs no network at all; otherwise download and check against the pinned hash
+            if (!downloader.isInstalled()) {
+                if (settings.isSkipDownload()) {
+                    MCEF.getLogger().warn("JCEF is not installed and skip-download is set");
+                } else {
+                    try {
+                        downloader.downloadAndInstall();
+                    } catch (IOException e) {
+                        MCEF.getLogger().error("Failed to install JCEF.", e);
+                        MCEFDownloadListener.INSTANCE.setFailed(true);
+                        return;
+                    }
                 }
-
-                downloader.extractJavaCefBuild(true);
             }
 
             MCEFDownloadListener.INSTANCE.setDone(true);

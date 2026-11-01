@@ -71,20 +71,20 @@ final class CefUtil {
             File jcefHelperFile = new File(System.getProperty("mcef.libraries.path"), platform.getNormalizedName() + "/jcef_helper");
             setUnixExecutable(jcefHelperFile);
         } else if (platform.isMacOS()) {
-            File mcefLibrariesPath = new File(System.getProperty("mcef.libraries.path"));
-            File jcefHelperFile = new File(mcefLibrariesPath, platform.getNormalizedName() + "/jcef_app.app/Contents/Frameworks/jcef Helper.app/Contents/MacOS/jcef Helper");
-            File jcefHelperGPUFile = new File(mcefLibrariesPath, platform.getNormalizedName() + "/jcef_app.app/Contents/Frameworks/jcef Helper (GPU).app/Contents/MacOS/jcef Helper (GPU)");
-            File jcefHelperPluginFile = new File(mcefLibrariesPath, platform.getNormalizedName() + "/jcef_app.app/Contents/Frameworks/jcef Helper (Plugin).app/Contents/MacOS/jcef Helper (Plugin)");
-            File jcefHelperRendererFile = new File(mcefLibrariesPath, platform.getNormalizedName() + "/jcef_app.app/Contents/Frameworks/jcef Helper (Renderer).app/Contents/MacOS/jcef Helper (Renderer)");
-            setUnixExecutable(jcefHelperFile);
-            setUnixExecutable(jcefHelperGPUFile);
-            setUnixExecutable(jcefHelperPluginFile);
-            setUnixExecutable(jcefHelperRendererFile);
+            // every helper app (GPU, Renderer, Plugin, Alerts, ...) ships its binary in Contents/MacOS
+            File frameworks = new File(System.getProperty("mcef.libraries.path"),
+                    platform.getNormalizedName() + "/jcef_app.app/Contents/Frameworks");
+            File[] apps = frameworks.listFiles((dir, name) -> name.endsWith(".app"));
+            if (apps != null) for (File app : apps) {
+                File[] bins = new File(app, "Contents/MacOS").listFiles(File::isFile);
+                if (bins != null) for (File bin : bins) setUnixExecutable(bin);
+            }
         }
 
         String[] cefSwitches = new String[]{
                 "--autoplay-policy=no-user-gesture-required",
-                "--disable-web-security",
+                // no --disable-web-security: it turns off the same-origin policy, letting any page read
+                // the user's logged-in sites
                 "--enable-widevine-cdm" // https://canary.discord.com/channels/985588552735809696/992495232035868682/1151704612924039218
                 // TODO: should probably make this configurable
                 //       based off this page: https://magpcss.org/ceforum/viewtopic.php?f=6&t=11672
