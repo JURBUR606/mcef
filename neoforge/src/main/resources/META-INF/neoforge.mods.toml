@@ -14,7 +14,7 @@ version="${mod_version}"
 displayName="${mod_name}"
 updateJSONURL=""
 displayTest="NONE"
-description='''Fork of MCEF by JURBUR606: Chromium 152, downloads verified by pinned SHA-256, same-origin policy on, no Widevine, no mod:// scheme. Based on MCEF by CinemaMod (LGPL-2.1).'''
+description='''Fork of MCEF by JURBUR606: Chromium 150 with H.264/AAC (OBS CEF build), downloads verified by pinned SHA-256, same-origin policy on, no Widevine, no mod:// scheme. Based on MCEF by CinemaMod (LGPL-2.1).'''
 [[dependencies.${mod_id}]]
     modId="neoforge"
     mandatory=true
