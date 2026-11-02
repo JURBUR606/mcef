@@ -208,6 +208,8 @@ public class MCEFBrowser extends CefBrowserOsr {
             }
             if (start < 0) start = 0;
             if (end > buffer.capacity()) end = buffer.capacity();
+            // memCopy is unchecked native memory: never write past the popup buffer
+            if (this.popupGraphics != null && end > this.popupGraphics.capacity()) end = this.popupGraphics.capacity();
 
             if (end > start) {
                 // TODO: check if it's more performant to go for row-wise copies or if it's better to just copy the updated region
@@ -391,7 +393,7 @@ public class MCEFBrowser extends CefBrowserOsr {
 
     // Expose drag & drop functions
     public void startDragging(CefDragData dragData, int mask, int x, int y) { // Overload since the JCEF method requires a browser, which then goes unused
-        startDragging(dragData, mask, x, y);
+        startDragging(this, dragData, mask, x, y); // used to call itself forever
     }
 
     public void finishDragging(int x, int y) {

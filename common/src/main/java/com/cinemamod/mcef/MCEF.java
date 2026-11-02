@@ -84,10 +84,6 @@ public final class MCEF {
             awaitingInit.clear();
             MCEF.getLogger().info("Chromium Embedded Framework initialized");
 
-            app.getHandle().registerSchemeHandlerFactory(
-                    "mod", "",
-                    (browser, frame, url, request) -> new ModScheme(request.getURL())
-            );
 
             // Handle shutdown events, macOS is special
             // These are important; the jcef process will linger around if not done

@@ -45,10 +45,10 @@ final class CefUtil {
     private static CefApp cefAppInstance;
     private static CefClient cefClientInstance;
 
+    // Holds cookies and logins: kept outside mods/ so sharing a modpack never hands out sessions
     private static final Path CACHE_PATH = Minecraft.getInstance().gameDirectory
             .toPath()
-            .resolve("mods")
-            .resolve("mcef-cache");
+            .resolve("mcef-profile");
 
     private static void setUnixExecutable(File file) {
         Set<PosixFilePermission> perms = new HashSet<>();
@@ -82,10 +82,10 @@ final class CefUtil {
         }
 
         String[] cefSwitches = new String[]{
-                "--autoplay-policy=no-user-gesture-required",
+                "--autoplay-policy=no-user-gesture-required"
                 // no --disable-web-security: it turns off the same-origin policy, letting any page read
                 // the user's logged-in sites
-                "--enable-widevine-cdm" // https://canary.discord.com/channels/985588552735809696/992495232035868682/1151704612924039218
+                // no --enable-widevine-cdm: it makes Chromium fetch Google's DRM component on its own
                 // TODO: should probably make this configurable
                 //       based off this page: https://magpcss.org/ceforum/viewtopic.php?f=6&t=11672
                 //       it seems the solution to the white screen is to add the "--disable-gpu" switch
