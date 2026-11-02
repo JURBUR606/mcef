@@ -153,6 +153,28 @@ public final class MCEF {
     }
 
     /**
+     * Creates a browser in its own request context: see {@link #createIncognitoContext()}.
+     */
+    public static MCEFBrowser createBrowser(String url, boolean transparent, int width, int height,
+            org.cef.browser.CefRequestContext context) {
+        assertInitialized();
+        MCEFBrowser browser = new MCEFBrowser(client, url, transparent, context);
+        browser.setCloseAllowed();
+        browser.createImmediately();
+        browser.resize(width, height);
+        return browser;
+    }
+
+    /**
+     * A request context with no cache path: cookies, logins and storage live in memory only and are
+     * never shared with the main profile. Use it for browsers that other players or servers control.
+     */
+    public static org.cef.browser.CefRequestContext createIncognitoContext() {
+        assertInitialized();
+        return org.cef.browser.CefRequestContext.createContext(null);
+    }
+
+    /**
      * Check if MCEF is initialized.
      * @return true if MCEF is initialized correctly, false if not
      */

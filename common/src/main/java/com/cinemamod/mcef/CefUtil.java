@@ -81,7 +81,8 @@ final class CefUtil {
             }
         }
 
-        String[] cefSwitches = new String[]{
+        MCEFSettings mcefSettings = MCEF.getSettings();
+        java.util.List<String> switches = new java.util.ArrayList<>(java.util.List.of(
                 "--autoplay-policy=no-user-gesture-required"
                 // no --disable-web-security: it turns off the same-origin policy, letting any page read
                 // the user's logged-in sites
@@ -90,7 +91,9 @@ final class CefUtil {
                 //       based off this page: https://magpcss.org/ceforum/viewtopic.php?f=6&t=11672
                 //       it seems the solution to the white screen is to add the "--disable-gpu" switch
                 //       but that shouldn't be done on all devices, so either we need to figure out a pattern and setup code to add the switch based off that, or add it as a config, if that is the case
-        };
+        ));
+        if (mcefSettings.isJitless()) switches.add("--js-flags=--jitless");
+        String[] cefSwitches = switches.toArray(new String[0]);
 
         if (!CefApp.startup(cefSwitches)) {
             return false;
@@ -100,6 +103,10 @@ final class CefUtil {
 
         CefSettings cefSettings = new CefSettings();
         cefSettings.windowless_rendering_enabled = true;
+        // the sandbox can only be enabled on macOS (helpers set it up themselves); java-cef ignores this elsewhere
+        cefSettings.no_sandbox = !(platform.isMacOS() && settings.isSandbox());
+        MCEF.getLogger().info("Chromium sandbox: " + (cefSettings.no_sandbox ? "off" : "on")
+                + (settings.isJitless() ? ", JIT off" : ""));
         if (settings.isUsingCache()) cefSettings.cache_path = CACHE_PATH.toAbsolutePath().toString(); // jcef wants an absolute path, so make sure it's absolute
         cefSettings.background_color = cefSettings.new ColorType(0, 255, 255, 255);
         // Set the user agent if there's one defined in MCEFSettings

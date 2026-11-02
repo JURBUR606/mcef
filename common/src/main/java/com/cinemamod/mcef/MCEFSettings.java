@@ -46,12 +46,26 @@ public class MCEFSettings {
     private String downloadMirror;
     private String userAgent;
     private boolean useCache;
+    private boolean sandbox;
+    private boolean jitless;
 
     public MCEFSettings() {
         skipDownload = false;
         downloadMirror = DEFAULT_MIRROR;
         userAgent = null;
         useCache = true;
+        sandbox = true;  // macOS only, see CefUtil
+        jitless = false;
+    }
+
+    /** Chromium sandbox for helper processes; only possible on macOS. */
+    public boolean isSandbox() {
+        return sandbox;
+    }
+
+    /** V8 without JIT: closes the most exploited attack surface, but disables WebAssembly and slows JS. */
+    public boolean isJitless() {
+        return jitless;
     }
 
     public boolean isSkipDownload() {
@@ -114,6 +128,8 @@ public class MCEFSettings {
         properties.setProperty("download-mirror", String.valueOf(downloadMirror));
         properties.setProperty("user-agent", String.valueOf(userAgent));
         properties.setProperty("use-cache", String.valueOf(useCache));
+        properties.setProperty("sandbox", String.valueOf(sandbox));
+        properties.setProperty("jitless", String.valueOf(jitless));
 
         try (FileOutputStream output = new FileOutputStream(file)) {
             properties.store(output, null);
@@ -142,6 +158,8 @@ public class MCEFSettings {
                 downloadMirror = DEFAULT_MIRROR;
             userAgent = properties.getProperty("user-agent");
             useCache = Boolean.parseBoolean(properties.getProperty("use-cache"));
+            sandbox = !"false".equals(properties.getProperty("sandbox"));   // missing key = on
+            jitless = Boolean.parseBoolean(properties.getProperty("jitless"));
         } catch (Exception e) {
             // Delete and re-create the file if there was a parsing error
             if (deleteRetries++ > 20)

@@ -85,7 +85,12 @@ public class MCEFBrowser extends CefBrowserOsr {
     protected boolean popupDrawn = false;
 
     public MCEFBrowser(MCEFClient client, String url, boolean transparent) {
-        super(client.getHandle(), url, transparent, null, frameSettings());
+        this(client, url, transparent, null);
+    }
+
+    /** @param context null = the shared profile (cookies on disk); see {@link MCEF#createIncognitoContext()} */
+    public MCEFBrowser(MCEFClient client, String url, boolean transparent, org.cef.browser.CefRequestContext context) {
+        super(client.getHandle(), url, transparent, context, frameSettings());
         renderer = new MCEFRenderer(transparent);
         cursorChangeListener = (cefCursorID) -> setCursor(CefCursorType.fromId(cefCursorID));
 
