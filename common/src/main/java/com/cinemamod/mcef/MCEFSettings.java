@@ -54,7 +54,9 @@ public class MCEFSettings {
         downloadMirror = DEFAULT_MIRROR;
         userAgent = null;
         useCache = true;
-        sandbox = true;  // macOS only, see CefUtil
+        // macOS only, see CefUtil. Off by default: with the game under a path the macOS sandbox profile
+        // cannot express, the GPU helper was denied its own framework and Chromium took the game down
+        sandbox = false;
         jitless = false;
     }
 
@@ -158,7 +160,7 @@ public class MCEFSettings {
                 downloadMirror = DEFAULT_MIRROR;
             userAgent = properties.getProperty("user-agent");
             useCache = Boolean.parseBoolean(properties.getProperty("use-cache"));
-            sandbox = !"false".equals(properties.getProperty("sandbox"));   // missing key = on
+            sandbox = Boolean.parseBoolean(properties.getProperty("sandbox")); // missing key = off
             jitless = Boolean.parseBoolean(properties.getProperty("jitless"));
         } catch (Exception e) {
             // Delete and re-create the file if there was a parsing error
