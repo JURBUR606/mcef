@@ -130,7 +130,7 @@ public class MCEFSettings {
         properties.setProperty("download-mirror", String.valueOf(downloadMirror));
         properties.setProperty("user-agent", String.valueOf(userAgent));
         properties.setProperty("use-cache", String.valueOf(useCache));
-        properties.setProperty("sandbox", String.valueOf(sandbox));
+        properties.setProperty("mac-sandbox", String.valueOf(sandbox));
         properties.setProperty("jitless", String.valueOf(jitless));
 
         try (FileOutputStream output = new FileOutputStream(file)) {
@@ -160,7 +160,8 @@ public class MCEFSettings {
                 downloadMirror = DEFAULT_MIRROR;
             userAgent = properties.getProperty("user-agent");
             useCache = Boolean.parseBoolean(properties.getProperty("use-cache"));
-            sandbox = Boolean.parseBoolean(properties.getProperty("sandbox")); // missing key = off
+            // new key: 2.5.0 wrote "sandbox=true", which crashed some Macs
+            sandbox = Boolean.parseBoolean(properties.getProperty("mac-sandbox")); // missing key = off
             jitless = Boolean.parseBoolean(properties.getProperty("jitless"));
         } catch (Exception e) {
             // Delete and re-create the file if there was a parsing error
