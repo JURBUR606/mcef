@@ -108,8 +108,28 @@ public class MCEFDownloader {
     public void downloadAndInstall() throws IOException {
         String expected = getPinnedHash();
         File archive = new File(librariesDir(), platform.getNormalizedName() + ".tar.gz");
-        MCEFDownloadListener.INSTANCE.setTask("Downloading Chromium Embedded Framework");
-        downloadFile(getJavaCefDownloadUrl(), archive);
+        // An archive put there by hand (downloaded in a browser / over a VPN) is used if it is the pinned one
+        if (archive.isFile() && sha256(archive).equals(expected)) {
+            MCEF.getLogger().info("Using the already present " + archive.getName());
+        } else {
+            archive.delete();
+            File part = new File(librariesDir(), platform.getNormalizedName() + ".tar.gz.part");
+            MCEFDownloadListener.INSTANCE.setTask("Downloading Chromium");
+            IOException last = null;
+            for (int attempt = 1; attempt <= 5; attempt++) {
+                try {
+                    downloadResumable(getJavaCefDownloadUrl(), part);
+                    last = null;
+                    break;
+                } catch (IOException e) {
+                    last = e;
+                    MCEF.getLogger().warn("Download attempt " + attempt + " failed (" + e.getMessage() + "), resuming");
+                    try { Thread.sleep(2000L * attempt); } catch (InterruptedException ie) { throw new IOException(ie); }
+                }
+            }
+            if (last != null) throw last;
+            if (!part.renameTo(archive)) throw new IOException("Could not rename " + part);
+        }
 
         MCEFDownloadListener.INSTANCE.setTask("Verifying");
         String actual = sha256(archive);
@@ -144,27 +164,46 @@ public class MCEFDownloader {
         f.delete();
     }
 
-    private static void downloadFile(String urlString, File outputFile) throws IOException {
-        MCEF.getLogger().info(urlString + " -> " + outputFile.getCanonicalPath());
+    /**
+     * Downloads into |part|, continuing after whatever it already holds (HTTP Range), so a dropped
+     * connection or a game restart does not start the ~150 MB download over. Shows MB done and speed.
+     */
+    private static void downloadResumable(String urlString, File part) throws IOException {
+        long have = part.isFile() ? part.length() : 0;
+        MCEF.getLogger().info(urlString + " -> " + part.getCanonicalPath() + (have > 0 ? " (resuming at " + have + ")" : ""));
         URL url = new URL(urlString);
         if (!url.getProtocol().equals("https")) throw new IOException("Refusing non-HTTPS download: " + urlString);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setInstanceFollowRedirects(true); // GitHub release assets redirect to their CDN (https only)
         connection.setConnectTimeout(15_000);
-        connection.setReadTimeout(60_000);
+        connection.setReadTimeout(30_000);
+        if (have > 0) connection.setRequestProperty("Range", "bytes=" + have + "-");
         try {
-            if (connection.getResponseCode() != 200)
-                throw new IOException("HTTP " + connection.getResponseCode() + " for " + urlString);
-            long fileSize = connection.getContentLengthLong();
-            try (InputStream in = new BufferedInputStream(connection.getInputStream());
-                 OutputStream out = new FileOutputStream(outputFile)) {
-                byte[] buffer = new byte[65536];
+            int code = connection.getResponseCode();
+            boolean append = code == 206;
+            if (code == 416 && have > 0) return; // already complete
+            if (code != 200 && code != 206) throw new IOException("HTTP " + code + " for " + urlString);
+            if (!append) have = 0; // server ignored the range: start over
+            long remaining = connection.getContentLengthLong();
+            long total = remaining > 0 ? have + remaining : -1;
+            try (InputStream in = new BufferedInputStream(connection.getInputStream(), 1 << 20);
+                 OutputStream out = new BufferedOutputStream(new FileOutputStream(part, append), 1 << 20)) {
+                byte[] buffer = new byte[1 << 16];
                 int count;
-                long readBytes = 0;
+                long done = have, windowStart = System.nanoTime(), windowBytes = 0;
                 while ((count = in.read(buffer)) != -1) {
                     out.write(buffer, 0, count);
-                    readBytes += count;
-                    if (fileSize > 0) MCEFDownloadListener.INSTANCE.setProgress((float) readBytes / fileSize);
+                    done += count;
+                    windowBytes += count;
+                    long now = System.nanoTime();
+                    if (now - windowStart > 1_000_000_000L) {
+                        double mbps = windowBytes / 1048576.0 / ((now - windowStart) / 1e9);
+                        MCEFDownloadListener.INSTANCE.setStatus(String.format(java.util.Locale.ROOT,
+                            "Downloading Chromium: %d / %s MB, %.1f MB/s", done >> 20, total > 0 ? Long.toString(total >> 20) : "?", mbps));
+                        windowStart = now;
+                        windowBytes = 0;
+                    }
+                    if (total > 0) MCEFDownloadListener.INSTANCE.setProgress((float) done / total);
                 }
             }
         } finally {

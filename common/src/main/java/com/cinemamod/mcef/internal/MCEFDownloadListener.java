@@ -37,6 +37,11 @@ public class MCEFDownloadListener {
         this.percent = 0;
     }
 
+    /** Changes the shown text without resetting the progress (download speed updates). */
+    public void setStatus(String text) {
+        this.task = text;
+    }
+
     public String getTask() {
         return task;
     }
